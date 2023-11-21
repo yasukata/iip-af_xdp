@@ -31,7 +31,7 @@
 
 #define __IOSUB_MAX_CORE (256)
 
-#define NUM_RX_DESC (64)
+#define NUM_RX_DESC (128)
 #define NUM_TX_DESC NUM_RX_DESC
 #define NUM_BUF ((NUM_RX_DESC + NUM_TX_DESC) * 4)
 #if (NUM_BUF % 8) /* for used_bm */
