@@ -794,12 +794,15 @@ static int __iosub_main(int argc, char *const *argv)
 							assert((m = strdup(optarg)) != NULL);
 							{
 								size_t i, j, k;
-								for (i = 0, j = 0, k = 0; i < strlen(optarg); i++) {
-									if (m[i] == ',') {
-										if (j + 1 != i)
+								for (i = 0, j = 0, k = 0; i < strlen(optarg) + 1; i++) {
+									if (i == strlen(optarg) || m[i] == ',') {
+										m[i] = '\0';
+										if (j != i)
 											__iosub_core_list[k++] = atoi(&m[j]);
 										j = i + 1;
 									}
+									if (i == strlen(optarg))
+										break;
 								}
 								assert(k);
 								__iosub_num_cores = k;
