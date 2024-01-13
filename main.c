@@ -24,6 +24,8 @@
 #include <linux/rtnetlink.h>
 #include <linux/if_xdp.h>
 
+#include <linux/if_ether.h>
+
 #include <pthread.h>
 #include <numa.h>
 
@@ -223,6 +225,79 @@ static uint16_t helper_ip4_get_connection_affinity(uint16_t protocol, uint32_t l
 	}
 }
 
+static uint16_t iip_ops_l2_hdr_len(void *pkt, void *opaque)
+{
+	{/* unused */
+		(void) pkt;
+		(void) opaque;
+	}
+	return sizeof(struct ethhdr);
+}
+
+static uint8_t *iip_ops_l2_hdr_src_ptr(void *pkt, void *opaque)
+{
+	return ((struct ethhdr *)(iip_ops_pkt_get_data(pkt, opaque)))->h_source;
+}
+
+static uint8_t *iip_ops_l2_hdr_dst_ptr(void *pkt, void *opaque)
+{
+	return ((struct ethhdr *)(iip_ops_pkt_get_data(pkt, opaque)))->h_dest;
+}
+
+static uint8_t iip_ops_l2_skip(void *pkt, void *opaque)
+{
+	{/* unused */
+		(void) pkt;
+		(void) opaque;
+	}
+	return 0;
+}
+
+static uint16_t iip_ops_l2_ethertype_be(void *pkt, void *opaque)
+{
+	return ((struct ethhdr *)(iip_ops_pkt_get_data(pkt, opaque)))->h_proto;
+}
+
+static uint16_t iip_ops_l2_addr_len(void *opaque)
+{
+	{/* unused */
+		(void) opaque;
+	}
+	return 6;
+}
+
+static void iip_ops_l2_broadcast_addr(uint8_t bc_mac[], void *opaque)
+{
+	{/* unused */
+		(void) opaque;
+	}
+	memset(bc_mac, 0xff, 6);
+}
+
+static void iip_ops_l2_hdr_craft(void *pkt, uint8_t src[], uint8_t dst[], uint16_t ethertype_be, void *opaque)
+{
+	struct ethhdr *ethh = (struct ethhdr *) iip_ops_pkt_get_data(pkt, opaque);
+	memcpy(ethh->h_source, src, 6);
+	memcpy(ethh->h_dest, dst, 6);
+	ethh->h_proto = ethertype_be;
+}
+
+static uint8_t iip_ops_arp_lhw(void *opaque)
+{
+	{/* unused */
+		(void) opaque;
+	}
+	return 6;
+}
+
+static uint8_t iip_ops_arp_lproto(void *opaque)
+{
+	{/* unused */
+		(void) opaque;
+	}
+	return 4;
+}
+
 static void __iip_buf_free(uint64_t addr, void *opaque)
 {
 	void **opaque_array = (void **) opaque;
@@ -372,7 +447,7 @@ static void iip_ops_util_now_ns(uint32_t t[3])
 	t[2] = ts.tv_nsec;
 }
 
-static void iip_ops_eth_flush(void *opaque)
+static void iip_ops_l2_flush(void *opaque)
 {
 	void **opaque_array = (void **) opaque;
 	struct io_opaque *iop = (struct io_opaque *) opaque_array[0];
@@ -423,7 +498,7 @@ static void iip_ops_eth_flush(void *opaque)
 	iop->eth.tx.cnt = iop->eth.tx.num_pkt = 0;
 }
 
-static void iip_ops_eth_push(void *_m, void *opaque)
+static void iip_ops_l2_push(void *_m, void *opaque)
 {
 	void **opaque_array = (void **) opaque;
 	struct io_opaque *iop = (struct io_opaque *) opaque_array[0];
@@ -436,7 +511,7 @@ static void iip_ops_eth_push(void *_m, void *opaque)
 		iop->eth.tx.num_pkt++;
 	}
 	if (ETH_TX_BATCH <= iop->eth.tx.cnt)
-		iip_ops_eth_flush(opaque);
+		iip_ops_l2_flush(opaque);
 }
 
 static uint8_t iip_ops_nic_feature_offload_tx_scatter_gather(void *opaque __attribute__((unused)))
