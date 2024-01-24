@@ -703,7 +703,7 @@ static void *__thread_fn(void *__data)
 					for (i = 0; i < NUM_NETSTACK_PB; i++)
 						__iip_enqueue_obj(io_opaque[iip_ops_util_core()].af_xdp.pool.p[0], (struct __xpb *) &_premem[2][i * sizeof(struct __xpb)], 0);
 				}
-				{ /* instantiae xdp aocket */
+				{ /* instantiate xdp socket */
 					struct xsk_socket *xsk;
 					void *umem_area;
 					struct xsk_umem *umem;
