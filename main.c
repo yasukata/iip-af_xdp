@@ -319,8 +319,8 @@ static uint64_t __iip_buf_alloc(void *opaque)
 				for (j = 0; j < 8; j++) {
 					if (!i && !j)
 						continue;
-					if (!(io_opaque[iip_ops_util_core()].af_xdp.used_bm[i] & (1U << j))) {
-						io_opaque[iip_ops_util_core()].af_xdp.used_bm[i] |= (1U << j);
+					if (!(iop->af_xdp.used_bm[i] & (1U << j))) {
+						iop->af_xdp.used_bm[i] |= (1U << j);
 						assert(!((struct __bufhead *) xsk_umem__get_data(iop->af_xdp.umem_area, BUF_SIZE * ((i << 3) + j)))->ref);
 						((struct __bufhead *) xsk_umem__get_data(iop->af_xdp.umem_area, BUF_SIZE * ((i << 3) + j)))->ref++;
 						return BUF_SIZE * ((i << 3) + j) + sizeof(struct __bufhead);
@@ -660,7 +660,7 @@ static void *__thread_fn(void *__data)
 		assert(pthread_setaffinity_np(pthread_self(), sizeof(cs), &cs) == 0);
 	}
 
-	while (iip_ops_util_core() != setup_core_id)
+	while (*((uint16_t *) __data) != setup_core_id)
 		usleep(10000);
 
 	{
@@ -685,7 +685,7 @@ static void *__thread_fn(void *__data)
 				{ /* associate memory for tcp connection */
 					uint16_t i;
 					for (i = 0; i < NUM_NETSTACK_PB; i++)
-						__iip_enqueue_obj(io_opaque[iip_ops_util_core()].af_xdp.pool.p[0], (struct __xpb *) &_premem[2][i * sizeof(struct __xpb)], 0);
+						__iip_enqueue_obj(io_opaque[*((uint16_t *) __data)].af_xdp.pool.p[0], (struct __xpb *) &_premem[2][i * sizeof(struct __xpb)], 0);
 				}
 				{ /* instantiate xdp socket */
 					struct xsk_socket *xsk;
@@ -718,15 +718,15 @@ static void *__thread_fn(void *__data)
 								.xdp_flags = XDP_FLAGS_UPDATE_IF_NOEXIST | XDP_FLAGS_DRV_MODE,
 								.bind_flags = XDP_USE_NEED_WAKEUP | XDP_ZEROCOPY /* | XDP_USE_SG */,
 							};
-							assert(!xsk_socket__create(&xsk, __iosub_ifname, iip_ops_util_core(), umem, &rx_ring, &tx_ring, &cfg));
+							assert(!xsk_socket__create(&xsk, __iosub_ifname, *((uint16_t *) __data), umem, &rx_ring, &tx_ring, &cfg));
 						}
 
 						setup_core_id++;
 
-						io_opaque[iip_ops_util_core()].af_xdp.xsk = xsk;
-						io_opaque[iip_ops_util_core()].af_xdp.umem_area = umem_area;
-						io_opaque[iip_ops_util_core()].af_xdp.complete_ring = &complete_ring;
-						io_opaque[iip_ops_util_core()].af_xdp.tx_ring = &tx_ring;
+						io_opaque[*((uint16_t *) __data)].af_xdp.xsk = xsk;
+						io_opaque[*((uint16_t *) __data)].af_xdp.umem_area = umem_area;
+						io_opaque[*((uint16_t *) __data)].af_xdp.complete_ring = &complete_ring;
+						io_opaque[*((uint16_t *) __data)].af_xdp.tx_ring = &tx_ring;
 
 						{
 							uint32_t idx;
@@ -738,7 +738,7 @@ static void *__thread_fn(void *__data)
 									uint32_t i;
 									for (i = 0; i < _cnt; i++) {
 										{
-											void *opaque[2] = { (void *) &io_opaque[iip_ops_util_core()], NULL, };
+											void *opaque[2] = { (void *) &io_opaque[*((uint16_t *) __data)], NULL, };
 											*xsk_ring_prod__fill_addr(&fill_ring, idx + i) = __iip_buf_alloc(opaque);
 										}
 										assert(*xsk_ring_prod__fill_addr(&fill_ring, idx + i) != UINT64_MAX);
@@ -754,9 +754,9 @@ static void *__thread_fn(void *__data)
 							usleep(100000);
 
 						{ /* call app thread init */
-							void *opaque[2] = { (void *) &io_opaque[iip_ops_util_core()], NULL, };
+							void *opaque[2] = { (void *) &io_opaque[*((uint16_t *) __data)], NULL, };
 							{
-								opaque[1] = __app_thread_init(workspace, opaque);
+								opaque[1] = __app_thread_init(workspace, *((uint16_t *) __data), opaque);
 								{
 									uint64_t prev_print = 0;
 									do {
@@ -779,7 +779,7 @@ static void *__thread_fn(void *__data)
 														}
 														xsk_ring_cons__release(&rx_ring, cnt);
 													}
-													io_opaque[iip_ops_util_core()].stat[stat_idx].eth.rx_pkt += cnt;
+													io_opaque[*((uint16_t *) __data)].stat[stat_idx].eth.rx_pkt += cnt;
 												}
 												if (cnt) {
 													uint32_t idx;
@@ -858,7 +858,7 @@ static void *__thread_fn(void *__data)
 		}
 	}
 
-	numa_free(io_opaque[iip_ops_util_core()].af_xdp.umem_area, BUF_SIZE * NUM_BUF);
+	numa_free(io_opaque[*((uint16_t *) __data)].af_xdp.umem_area, BUF_SIZE * NUM_BUF);
 
 	pthread_exit(NULL);
 }
