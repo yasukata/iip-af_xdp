@@ -442,22 +442,6 @@ static void *iip_ops_pkt_scatter_gather_chain_get_next(void *pkt_head, void *opa
 	return ((struct __xpb *) pkt_head)->next[0];
 }
 
-static uint16_t iip_ops_util_core(void)
-{
-	unsigned int cpu, node;
-	assert(!getcpu(&cpu, &node));
-	return __iosub_core_list[cpu];
-}
-
-static void iip_ops_util_now_ns(uint32_t t[3])
-{
-	struct timespec ts;
-	assert(!clock_gettime(CLOCK_REALTIME, &ts));
-	t[0] = (ts.tv_sec >> 32) & 0xffffffff;
-	t[1] = (ts.tv_sec >>  0) & 0xffffffff;
-	t[2] = ts.tv_nsec;
-}
-
 static void iip_ops_l2_flush(void *opaque)
 {
 	void **opaque_array = (void **) opaque;
