@@ -62,7 +62,6 @@ struct __xpb {
 };
 
 struct io_opaque {
-	uint16_t queueid;
 	struct {
 		struct xsk_socket *xsk;
 		void *umem_area;
