@@ -108,10 +108,6 @@ static uint16_t __iosub_rss_key_size_cached = 0;
 
 static uint16_t helper_ip4_get_connection_affinity(uint16_t protocol, uint32_t local_ip4_be, uint16_t local_port_be, uint32_t peer_ip4_be, uint16_t peer_port_be, void *opaque)
 {
-	(void) protocol;
-	void **opaque_array = (void **) opaque;
-	struct io_opaque *iop = (struct io_opaque *) opaque_array[0];
-	(void) iop;
 	if (!__iosub_rss_tbl_size_cached) {
 		char tbl_buf[1024] = { 0 };
 		{
@@ -223,15 +219,19 @@ static uint16_t helper_ip4_get_connection_affinity(uint16_t protocol, uint32_t l
 			return __iosub_rss_tbl_cached[v & ((1 << (31 - __builtin_clz(__iosub_num_cores))) - 1)];
 		}
 	}
+	{ /* unused */
+		(void) protocol;
+		(void) opaque;
+	}
 }
 
 static uint16_t iip_ops_l2_hdr_len(void *pkt, void *opaque)
 {
-	{/* unused */
+	return sizeof(struct ethhdr);
+	{ /* unused */
 		(void) pkt;
 		(void) opaque;
 	}
-	return sizeof(struct ethhdr);
 }
 
 static uint8_t *iip_ops_l2_hdr_src_ptr(void *pkt, void *opaque)
@@ -246,11 +246,11 @@ static uint8_t *iip_ops_l2_hdr_dst_ptr(void *pkt, void *opaque)
 
 static uint8_t iip_ops_l2_skip(void *pkt, void *opaque)
 {
-	{/* unused */
+	return 0;
+	{ /* unused */
 		(void) pkt;
 		(void) opaque;
 	}
-	return 0;
 }
 
 static uint16_t iip_ops_l2_ethertype_be(void *pkt, void *opaque)
@@ -260,18 +260,18 @@ static uint16_t iip_ops_l2_ethertype_be(void *pkt, void *opaque)
 
 static uint16_t iip_ops_l2_addr_len(void *opaque)
 {
-	{/* unused */
+	return 6;
+	{ /* unused */
 		(void) opaque;
 	}
-	return 6;
 }
 
 static void iip_ops_l2_broadcast_addr(uint8_t bc_mac[], void *opaque)
 {
-	{/* unused */
+	memset(bc_mac, 0xff, 6);
+	{ /* unused */
 		(void) opaque;
 	}
-	memset(bc_mac, 0xff, 6);
 }
 
 static void iip_ops_l2_hdr_craft(void *pkt, uint8_t src[], uint8_t dst[], uint16_t ethertype_be, void *opaque)
@@ -284,18 +284,18 @@ static void iip_ops_l2_hdr_craft(void *pkt, uint8_t src[], uint8_t dst[], uint16
 
 static uint8_t iip_ops_arp_lhw(void *opaque)
 {
-	{/* unused */
+	return 6;
+	{ /* unused */
 		(void) opaque;
 	}
-	return 6;
 }
 
 static uint8_t iip_ops_arp_lproto(void *opaque)
 {
-	{/* unused */
+	return 4;
+	{ /* unused */
 		(void) opaque;
 	}
-	return 4;
 }
 
 static void __iip_buf_free(uint64_t addr, void *opaque)
@@ -375,30 +375,42 @@ static void *iip_ops_pkt_get_data(void *pkt, void *opaque)
 	return (void *) ((uintptr_t) xsk_umem__get_data(iop->af_xdp.umem_area, ((struct __xpb *) pkt)->addr) + ((struct __xpb *) pkt)->head);
 }
 
-static uint16_t iip_ops_pkt_get_len(void *pkt, void *opaque __attribute__((unused)))
+static uint16_t iip_ops_pkt_get_len(void *pkt, void *opaque)
 {
 	return ((struct __xpb *) pkt)->len;
+	{ /* unused */
+		(void) opaque;
+	}
 }
 
-static void iip_ops_pkt_set_len(void *pkt, uint16_t len, void *opaque __attribute__((unused)))
+static void iip_ops_pkt_set_len(void *pkt, uint16_t len, void *opaque)
 {
 	assert(pkt);
 	((struct __xpb *) pkt)->len = len;
+	{ /* unused */
+		(void) opaque;
+	}
 }
 
-static void iip_ops_pkt_increment_head(void *pkt, uint16_t len, void *opaque __attribute__((unused)))
+static void iip_ops_pkt_increment_head(void *pkt, uint16_t len, void *opaque)
 {
 	assert(pkt);
 	assert(len <= ((struct __xpb *) pkt)->len);
 	((struct __xpb *) pkt)->head += len;
 	((struct __xpb *) pkt)->len -= len;
+	{ /* unused */
+		(void) opaque;
+	}
 }
 
-static void iip_ops_pkt_decrement_tail(void *pkt, uint16_t len, void *opaque __attribute__((unused)))
+static void iip_ops_pkt_decrement_tail(void *pkt, uint16_t len, void *opaque)
 {
 	assert(pkt);
 	assert(len <= ((struct __xpb *) pkt)->len);
 	((struct __xpb *) pkt)->len -= len;
+	{ /* unused */
+		(void) opaque;
+	}
 }
 
 static void *iip_ops_pkt_clone(void *pkt, void *opaque)
@@ -517,81 +529,140 @@ static void iip_ops_l2_push(void *_m, void *opaque)
 static uint8_t iip_ops_nic_feature_offload_tx_scatter_gather(void *opaque __attribute__((unused)))
 {
 	return 0; /* TODO: enable */
+	{ /* unused */
+		(void) opaque;
+	}
 }
 
-static uint8_t iip_ops_nic_feature_offload_ip4_rx_checksum(void *opaque __attribute__((unused)))
+static uint8_t iip_ops_nic_feature_offload_ip4_rx_checksum(void *opaque)
 {
 	return 0;
+	{ /* unused */
+		(void) opaque;
+	}
 }
 
-static uint8_t iip_ops_nic_feature_offload_ip4_tx_checksum(void *opaque __attribute__((unused)))
+static uint8_t iip_ops_nic_feature_offload_ip4_tx_checksum(void *opaque)
 {
 	return 0;
+	{ /* unused */
+		(void) opaque;
+	}
 }
 
-static uint8_t iip_ops_nic_offload_ip4_rx_checksum(void *m __attribute__((unused)), void *opaque __attribute__((unused)))
+static uint8_t iip_ops_nic_offload_ip4_rx_checksum(void *m, void *opaque)
 {
 	return 0;
+	{ /* unused */
+		(void) m;
+		(void) opaque;
+	}
 }
 
-static uint8_t iip_ops_nic_offload_tcp_rx_checksum(void *m __attribute__((unused)), void *opaque __attribute__((unused)))
+static uint8_t iip_ops_nic_offload_tcp_rx_checksum(void *m, void *opaque)
 {
 	return 0;
+	{ /* unused */
+		(void) m;
+		(void) opaque;
+	}
 }
 
-static uint8_t iip_ops_nic_offload_udp_rx_checksum(void *m __attribute__((unused)), void *opaque __attribute__((unused)))
+static uint8_t iip_ops_nic_offload_udp_rx_checksum(void *m, void *opaque)
 {
 	return 0;
+	{ /* unused */
+		(void) m;
+		(void) opaque;
+	}
 }
 
-static void iip_ops_nic_offload_ip4_tx_checksum_mark(void *m __attribute__((unused)), void *opaque __attribute__((unused)))
+static void iip_ops_nic_offload_ip4_tx_checksum_mark(void *m, void *opaque)
 {
+	{ /* unused */
+		(void) m;
+		(void) opaque;
+	}
 }
 
-static uint8_t iip_ops_nic_feature_offload_tcp_rx_checksum(void *opaque __attribute__((unused)))
-{
-	return 0;
-}
-
-static uint8_t iip_ops_nic_feature_offload_tcp_tx_checksum(void *opaque __attribute__((unused)))
-{
-	return 0;
-}
-
-static uint8_t iip_ops_nic_feature_offload_tcp_tx_tso(void *opaque __attribute__((unused)))
+static uint8_t iip_ops_nic_feature_offload_tcp_rx_checksum(void *opaque)
 {
 	return 0;
+	{ /* unused */
+		(void) opaque;
+	}
 }
 
-static void iip_ops_nic_offload_tcp_tx_checksum_mark(void *m __attribute__((unused)), void *opaque __attribute__((unused)))
-{
-}
-
-static void iip_ops_nic_offload_tcp_tx_tso_mark(void *m __attribute__((unused)), void *opaque __attribute__((unused)))
-{
-}
-
-static uint8_t iip_ops_nic_feature_offload_udp_rx_checksum(void *opaque __attribute__((unused)))
+static uint8_t iip_ops_nic_feature_offload_tcp_tx_checksum(void *opaque)
 {
 	return 0;
+	{ /* unused */
+		(void) opaque;
+	}
 }
 
-static uint8_t iip_ops_nic_feature_offload_udp_tx_checksum(void *opaque __attribute__((unused)))
+static uint8_t iip_ops_nic_feature_offload_tcp_tx_tso(void *opaque)
 {
 	return 0;
+	{ /* unused */
+		(void) opaque;
+	}
 }
 
-static uint8_t iip_ops_nic_feature_offload_udp_tx_tso(void *opaque __attribute__((unused)))
+static void iip_ops_nic_offload_tcp_tx_checksum_mark(void *m, void *opaque)
+{
+	{ /* unused */
+		(void) m;
+		(void) opaque;
+	}
+}
+
+static void iip_ops_nic_offload_tcp_tx_tso_mark(void *m, void *opaque)
+{
+	{ /* unused */
+		(void) m;
+		(void) opaque;
+	}
+}
+
+static uint8_t iip_ops_nic_feature_offload_udp_rx_checksum(void *opaque)
 {
 	return 0;
+	{ /* unused */
+		(void) opaque;
+	}
 }
 
-static void iip_ops_nic_offload_udp_tx_checksum_mark(void *m __attribute__((unused)), void *opaque __attribute__((unused)))
+static uint8_t iip_ops_nic_feature_offload_udp_tx_checksum(void *opaque)
 {
+	return 0;
+	{ /* unused */
+		(void) opaque;
+	}
 }
 
-static void iip_ops_nic_offload_udp_tx_tso_mark(void *m __attribute__((unused)), void *opaque __attribute__((unused)))
+static uint8_t iip_ops_nic_feature_offload_udp_tx_tso(void *opaque)
 {
+	return 0;
+	{ /* unused */
+		(void) opaque;
+	}
+}
+
+static void iip_ops_nic_offload_udp_tx_checksum_mark(void *m, void *opaque)
+{
+	{ /* unused */
+		(void) m;
+		(void) opaque;
+	}
+}
+
+static void iip_ops_nic_offload_udp_tx_tso_mark(void *m, void *opaque)
+{
+	{ /* unused */
+		(void) m;
+		(void) opaque;
+	}
 }
 
 static volatile uint16_t setup_core_id = 0;
