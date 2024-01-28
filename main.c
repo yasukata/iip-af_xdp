@@ -1017,6 +1017,7 @@ static int __iosub_main(int argc, char *const *argv)
 					assert(!pthread_join(ti[i].th, NULL));
 			}
 		}
+		__app_exit(app_global_opaque);
 	}
 
 	printf("Done.\n");
