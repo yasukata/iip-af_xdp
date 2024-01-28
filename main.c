@@ -650,17 +650,24 @@ static void iip_ops_nic_offload_udp_tx_tso_mark(void *m, void *opaque)
 
 static volatile uint16_t setup_core_id = 0;
 
+struct __thread_info {
+	pthread_t th;
+	uint16_t id;
+	void *app_global_opaque;
+};
+
 /* thread loop */
 static void *__thread_fn(void *__data)
 {
+	struct __thread_info *ti = (struct __thread_info *) __data;
 	{
 		cpu_set_t cs;
 		CPU_ZERO(&cs);
-		CPU_SET(*((uint16_t *) __data), &cs);
+		CPU_SET(ti->id, &cs);
 		assert(pthread_setaffinity_np(pthread_self(), sizeof(cs), &cs) == 0);
 	}
 
-	while (*((uint16_t *) __data) != setup_core_id)
+	while (ti->id != setup_core_id)
 		usleep(10000);
 
 	{
@@ -685,7 +692,7 @@ static void *__thread_fn(void *__data)
 				{ /* associate memory for tcp connection */
 					uint16_t i;
 					for (i = 0; i < NUM_NETSTACK_PB; i++)
-						__iip_enqueue_obj(io_opaque[*((uint16_t *) __data)].af_xdp.pool.p[0], (struct __xpb *) &_premem[2][i * sizeof(struct __xpb)], 0);
+						__iip_enqueue_obj(io_opaque[ti->id].af_xdp.pool.p[0], (struct __xpb *) &_premem[2][i * sizeof(struct __xpb)], 0);
 				}
 				{ /* instantiate xdp socket */
 					struct xsk_socket *xsk;
@@ -718,15 +725,15 @@ static void *__thread_fn(void *__data)
 								.xdp_flags = XDP_FLAGS_UPDATE_IF_NOEXIST | XDP_FLAGS_DRV_MODE,
 								.bind_flags = XDP_USE_NEED_WAKEUP | XDP_ZEROCOPY /* | XDP_USE_SG */,
 							};
-							assert(!xsk_socket__create(&xsk, __iosub_ifname, *((uint16_t *) __data), umem, &rx_ring, &tx_ring, &cfg));
+							assert(!xsk_socket__create(&xsk, __iosub_ifname, ti->id, umem, &rx_ring, &tx_ring, &cfg));
 						}
 
 						setup_core_id++;
 
-						io_opaque[*((uint16_t *) __data)].af_xdp.xsk = xsk;
-						io_opaque[*((uint16_t *) __data)].af_xdp.umem_area = umem_area;
-						io_opaque[*((uint16_t *) __data)].af_xdp.complete_ring = &complete_ring;
-						io_opaque[*((uint16_t *) __data)].af_xdp.tx_ring = &tx_ring;
+						io_opaque[ti->id].af_xdp.xsk = xsk;
+						io_opaque[ti->id].af_xdp.umem_area = umem_area;
+						io_opaque[ti->id].af_xdp.complete_ring = &complete_ring;
+						io_opaque[ti->id].af_xdp.tx_ring = &tx_ring;
 
 						{
 							uint32_t idx;
@@ -738,7 +745,7 @@ static void *__thread_fn(void *__data)
 									uint32_t i;
 									for (i = 0; i < _cnt; i++) {
 										{
-											void *opaque[2] = { (void *) &io_opaque[*((uint16_t *) __data)], NULL, };
+											void *opaque[3] = { (void *) &io_opaque[ti->id], ti->app_global_opaque, NULL, };
 											*xsk_ring_prod__fill_addr(&fill_ring, idx + i) = __iip_buf_alloc(opaque);
 										}
 										assert(*xsk_ring_prod__fill_addr(&fill_ring, idx + i) != UINT64_MAX);
@@ -754,9 +761,9 @@ static void *__thread_fn(void *__data)
 							usleep(100000);
 
 						{ /* call app thread init */
-							void *opaque[2] = { (void *) &io_opaque[*((uint16_t *) __data)], NULL, };
+							void *opaque[3] = { (void *) &io_opaque[ti->id], ti->app_global_opaque, NULL, };
 							{
-								opaque[1] = __app_thread_init(workspace, *((uint16_t *) __data), opaque);
+								opaque[2] = __app_thread_init(workspace, ti->id, opaque);
 								{
 									uint64_t prev_print = 0;
 									do {
@@ -779,7 +786,7 @@ static void *__thread_fn(void *__data)
 														}
 														xsk_ring_cons__release(&rx_ring, cnt);
 													}
-													io_opaque[*((uint16_t *) __data)].stat[stat_idx].eth.rx_pkt += cnt;
+													io_opaque[ti->id].stat[stat_idx].eth.rx_pkt += cnt;
 												}
 												if (cnt) {
 													uint32_t idx;
@@ -809,7 +816,7 @@ static void *__thread_fn(void *__data)
 											__app_loop(mac_addr, ip4_addr_be, &_next_us, opaque);
 											next_us = _next_us < next_us ? _next_us : next_us;
 										}
-										if (!*((uint16_t *) __data)) {
+										if (!ti->id) {
 											struct timespec ts;
 											assert(!clock_gettime(CLOCK_REALTIME, &ts));
 											if (prev_print + 1000000000UL < ts.tv_sec * 1000000000UL + ts.tv_nsec) {
@@ -858,7 +865,7 @@ static void *__thread_fn(void *__data)
 		}
 	}
 
-	numa_free(io_opaque[*((uint16_t *) __data)].af_xdp.umem_area, BUF_SIZE * NUM_BUF);
+	numa_free(io_opaque[ti->id].af_xdp.umem_area, BUF_SIZE * NUM_BUF);
 
 	pthread_exit(NULL);
 }
@@ -992,22 +999,23 @@ static int __iosub_main(int argc, char *const *argv)
 		}
 	}
 
-	__app_init(argc, argv);
-
 	{
-		pthread_t th[MAX_THREAD];
-		uint16_t id[MAX_THREAD];
+		void *app_global_opaque = __app_init(argc, argv);
 		{
-			uint16_t i;
-			for (i = 0; i < __iosub_num_cores; i++) {
-				id[i] = i;
-				assert(!pthread_create(&th[i], NULL, __thread_fn, &id[i]));
+			struct __thread_info ti[MAX_THREAD];
+			{
+				uint16_t i;
+				for (i = 0; i < __iosub_num_cores; i++) {
+					ti[i].id = i;
+					ti[i].app_global_opaque = app_global_opaque;
+					assert(!pthread_create(&ti[i].th, NULL, __thread_fn, &ti[i]));
+				}
 			}
-		}
-		{
-			uint16_t i;
-			for (i = 0; i < __iosub_num_cores; i++)
-				assert(!pthread_join(th[i], NULL));
+			{
+				uint16_t i;
+				for (i = 0; i < __iosub_num_cores; i++)
+					assert(!pthread_join(ti[i].th, NULL));
+			}
 		}
 	}
 
