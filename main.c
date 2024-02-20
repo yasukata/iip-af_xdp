@@ -813,7 +813,7 @@ static void *__thread_fn(void *__data)
 										}
 										{
 											uint32_t _next_us = 1000000U;
-											__app_loop(mac_addr, ip4_addr_be, &_next_us, opaque);
+											__app_loop(workspace, mac_addr, ip4_addr_be, &_next_us, opaque);
 											next_us = _next_us < next_us ? _next_us : next_us;
 										}
 										if (!ti->id) {
