@@ -33,17 +33,29 @@
 
 #define __IOSUB_MAX_CORE (256)
 
+#ifndef NUM_RX_DESC
 #define NUM_RX_DESC (128)
+#endif
+#ifndef NUM_TX_DESC
 #define NUM_TX_DESC NUM_RX_DESC
+#endif
 #define NUM_BUF ((NUM_RX_DESC + NUM_TX_DESC) * 4)
 #if (NUM_BUF % 8) /* for used_bm */
 #error "invalid number of bufs"
 #endif
 #define BUF_SIZE (2048)
+#ifndef NUM_NETSTACK_PB
 #define NUM_NETSTACK_PB (8192)
+#endif
+#ifndef NUM_NETSTACK_TCP_CONN
 #define NUM_NETSTACK_TCP_CONN (512)
+#endif
+#ifndef ETH_RX_BATCH
 #define ETH_RX_BATCH (32)
-#define ETH_TX_BATCH (32)
+#endif
+#ifndef ETH_TX_BATCH
+#define ETH_TX_BATCH ETH_RX_BATCH
+#endif
 #define ETH_TX_CHAIN_MAX (16)
 #if (NUM_TX_DESC < ETH_TX_BATCH + ETH_TX_CHAIN_MAX) /* avoid exceeding limit in eth push / flush */
 #error "too large max chain and batch"
