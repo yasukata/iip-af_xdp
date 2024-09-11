@@ -117,6 +117,8 @@ static uint16_t __iosub_rss_tbl_size_cached = 0;
 static uint8_t __iosub_rss_key_cached[256] = { 0 };
 static uint16_t __iosub_rss_key_size_cached = 0;
 
+static int32_t __iosub_max_poll_wait_ms = 1000U; /* 1 sec */
+
 static uint16_t helper_ip4_get_connection_affinity(uint16_t protocol, uint32_t local_ip4_be, uint16_t local_port_be, uint32_t peer_ip4_be, uint16_t peer_port_be, void *opaque)
 {
 	if (!__iosub_rss_tbl_size_cached) {
@@ -779,7 +781,7 @@ static void *__thread_fn(void *__data)
 								{
 									uint64_t prev_print = 0;
 									do {
-										uint32_t next_us = 1000000U; /* 1 sec */
+										uint32_t next_us = __iosub_max_poll_wait_ms * 1000;
 										{
 											struct __xpb *m[ETH_RX_BATCH] = { 0 };
 											uint32_t cnt = 0;
@@ -817,6 +819,8 @@ static void *__thread_fn(void *__data)
 													}
 												}
 											}
+											if (cnt)
+												next_us = 0;
 											{ /* execute network stack */
 												uint32_t _next_us = 1000000U;
 												iip_run(workspace, mac_addr, ip4_addr_be, (void **) m, cnt, &_next_us, opaque);
@@ -857,7 +861,7 @@ static void *__thread_fn(void *__data)
 												prev_print = ts.tv_sec * 1000000000UL + ts.tv_nsec;
 											}
 										}
-										{
+										if (next_us) {
 											struct pollfd pollfd = {
 												.fd = xsk_socket__fd(xsk),
 												.events = POLLIN,
@@ -886,8 +890,11 @@ static int __iosub_main(int argc, char *const *argv)
 {
 	{
 		int ch;
-		while ((ch = getopt(argc, argv, "i:l:")) != -1) {
+		while ((ch = getopt(argc, argv, "e:i:l:")) != -1) {
 			switch (ch) {
+			case 'e':
+				assert(sscanf(optarg, "%d", &__iosub_max_poll_wait_ms) == 1);
+				break;
 			case 'i':
 				__iosub_ifname = optarg;
 				break;
