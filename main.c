@@ -717,8 +717,8 @@ static void *__thread_fn(void *__data)
 					struct xsk_socket *xsk;
 					void *umem_area;
 					struct xsk_umem *umem;
-					struct xsk_ring_prod fill_ring;
-					struct xsk_ring_cons complete_ring;
+					struct xsk_ring_prod fill_ring = { 0 };
+					struct xsk_ring_cons complete_ring = { 0 };
 					{
 						assert((umem_area = numa_alloc_local(BUF_SIZE * NUM_BUF)) != NULL);
 						{
