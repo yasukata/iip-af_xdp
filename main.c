@@ -29,7 +29,12 @@
 #include <pthread.h>
 #include <numa.h>
 
+#ifdef XSK_HEADER_LIBBPF
 #include <bpf/xsk.h>
+#endif
+#ifdef XSK_HEADER_LIBXDP
+#include <xdp/xsk.h>
+#endif
 
 #define __IOSUB_MAX_CORE (256)
 
