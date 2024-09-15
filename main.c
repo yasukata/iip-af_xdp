@@ -484,7 +484,6 @@ static void iip_ops_l2_flush(void *opaque)
 		uint32_t idx;
 		{
 			uint32_t cnt = xsk_ring_prod__reserve(iop->af_xdp.tx_ring, iop->eth.tx.cnt, &idx);
-			assert(cnt == iop->eth.tx.cnt);
 			if (cnt) {
 				uint32_t i;
 				for (i = 0; i < cnt; i++) {
@@ -500,6 +499,7 @@ static void iip_ops_l2_flush(void *opaque)
 				if (xsk_ring_prod__needs_wakeup(iop->af_xdp.tx_ring))
 					assert(sendto(xsk_socket__fd(iop->af_xdp.xsk), NULL, 0, MSG_DONTWAIT, NULL, 0) != -1);
 				iop->af_xdp.eth_sent += cnt;
+				iop->stat[stat_idx].eth.tx_pkt += cnt;
 			}
 		}
 	}
@@ -508,7 +508,6 @@ static void iip_ops_l2_flush(void *opaque)
 		for (i = 0; i < iop->eth.tx.cnt; i++)
 			__iip_pkt_free(iop->eth.tx.m[i], opaque);
 	}
-	iop->stat[stat_idx].eth.tx_pkt += iop->eth.tx.num_pkt;
 	iop->eth.tx.cnt = iop->eth.tx.num_pkt = 0;
 }
 
