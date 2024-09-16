@@ -757,6 +757,18 @@ static void *__thread_fn(void *__data)
 							};
 							assert(!xsk_socket__create(&xsk, __iosub_ifname, ti->id, umem, &rx_ring, &tx_ring, &cfg));
 						}
+						{
+							uint32_t val = 1;
+							assert(setsockopt(xsk_socket__fd(xsk), SOL_SOCKET, SO_PREFER_BUSY_POLL, &val, sizeof(val)) != -1);
+						}
+						{
+							uint32_t val = 20;
+							assert(setsockopt(xsk_socket__fd(xsk), SOL_SOCKET, SO_BUSY_POLL, &val, sizeof(val)) != -1);
+						}
+						{
+							uint32_t val = 64;
+							assert(setsockopt(xsk_socket__fd(xsk), SOL_SOCKET, SO_BUSY_POLL_BUDGET, &val, sizeof(val)) != -1);
+						}
 
 						setup_core_id++;
 
