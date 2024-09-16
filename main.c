@@ -820,6 +820,8 @@ static void *__thread_fn(void *__data)
 															}
 														}
 														xsk_ring_prod__submit(&fill_ring, _cnt);
+														if (xsk_ring_prod__needs_wakeup(&fill_ring))
+															assert(sendto(xsk_socket__fd(xsk), NULL, 0, MSG_DONTWAIT, NULL, 0) != -1);
 													}
 												}
 											}
