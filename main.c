@@ -891,7 +891,7 @@ static void *__thread_fn(void *__data)
 												prev_print = ts.tv_sec * 1000000000UL + ts.tv_nsec;
 											}
 										}
-										if (next_us) {
+										{
 											struct pollfd pollfd = {
 												.fd = xsk_socket__fd(xsk),
 												.events = POLLIN,
