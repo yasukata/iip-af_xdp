@@ -738,6 +738,7 @@ static void *__thread_fn(void *__data)
 					for (i = 0; i < NUM_BUF; i++)
 						__iip_enqueue_obj(io_opaque[ti->id].af_xdp.pool.buf[0], &io_opaque[ti->id].af_xdp.buf[i], 0);
 				}
+				printf("rx-desc %u tx-desc %u rx-batch %u tx-batch %u buf-size %u head-room %u\n", NUM_RX_DESC, NUM_TX_DESC, ETH_RX_BATCH, ETH_TX_BATCH, BUF_SIZE, XSK_UMEM__DEFAULT_FRAME_HEADROOM);
 				{ /* instantiate xdp socket */
 					struct xsk_socket *xsk;
 					void *umem_area;
