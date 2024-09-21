@@ -63,8 +63,9 @@
 #error "too large max chain and batch"
 #endif
 
-#define __IOSUB_BUF_ADDR_ASSERT(__iop, __addr) do { assert((((__addr) & ~(BUF_SIZE - 1)) / BUF_SIZE) < NUM_BUF); } while (0)
-#define __IOSUB_BUF_REFCNT(__iop, __addr) ((__iop)->af_xdp.buf[((__addr) & ~(BUF_SIZE - 1)) / BUF_SIZE].ref)
+#define __IOSUB_BUF_IDX(__addr) (((__addr) & ~(BUF_SIZE - 1)) / BUF_SIZE)
+#define __IOSUB_BUF_ADDR_ASSERT(__iop, __addr) do { assert((__IOSUB_BUF_IDX(__addr)) < NUM_BUF); } while (0)
+#define __IOSUB_BUF_REFCNT(__iop, __addr) ((__iop)->af_xdp.buf_ref[__IOSUB_BUF_IDX(__addr)])
 
 #ifndef __IOSUB_BUSY_POLL_SOCK
 #define __IOSUB_BUSY_POLL_SOCK (1)
@@ -78,12 +79,6 @@ struct __xpb {
 	struct __xpb *prev[2];
 };
 
-struct __xpb_bufmem {
-	uint64_t ref;
-	struct __xpb_bufmem *next[1];
-	struct __xpb_bufmem *prev[1];
-};
-
 struct io_opaque {
 	struct {
 		struct xsk_socket *xsk;
@@ -95,7 +90,9 @@ struct io_opaque {
 			struct __xpb *p[1][2];
 			struct __xpb_bufmem *buf[1][2];
 		} pool;
-		struct __xpb_bufmem buf[NUM_BUF];
+		uint16_t buf_ref[NUM_BUF];
+		uint32_t free_buf_cnt;
+		uint64_t free_buf_addr[NUM_BUF];
 	} af_xdp;
 	struct {
 		struct {
@@ -328,40 +325,21 @@ static void __iip_buf_free(uint64_t addr, void *opaque)
 	void **opaque_array = (void **) opaque;
 	struct io_opaque *iop = (struct io_opaque *) opaque_array[0];
 	__IOSUB_BUF_ADDR_ASSERT(iop, addr);
-	if (--__IOSUB_BUF_REFCNT(iop, addr) == 0) {
-#define __iip_enqueue_obj_top(__queue, __obj, __x) \
-	do { \
-		(__obj)->prev[__x] = (__obj)->next[__x] = NULL; \
-		if (!((__queue)[0])) { \
-			(__queue)[0] = (__queue)[1] = (__obj); \
-		} else { \
-			(__queue)[0]->prev[__x] = (__obj); \
-			(__obj)->next[__x] = (__queue)[0]; \
-			(__queue)[0] = (__obj); \
-		} \
-	} while (0)
-		__iip_enqueue_obj_top(iop->af_xdp.pool.buf[0], &iop->af_xdp.buf[(addr % ~(BUF_SIZE - 1)) / BUF_SIZE], 0);
-#undef __iip_enqueue_obj_top
-	}
+	if (--__IOSUB_BUF_REFCNT(iop, addr) == 0)
+		iop->af_xdp.free_buf_addr[iop->af_xdp.free_buf_cnt++] = addr;
 }
 
 static uint64_t __iip_buf_alloc(void *opaque)
 {
 	void **opaque_array = (void **) opaque;
 	struct io_opaque *iop = (struct io_opaque *) opaque_array[0];
-	if (!iop->af_xdp.pool.buf[0][0])
+	if (iop->af_xdp.free_buf_cnt) {
+		uint64_t addr = iop->af_xdp.free_buf_addr[--iop->af_xdp.free_buf_cnt];
+		__IOSUB_BUF_ADDR_ASSERT(iop, addr);
+		assert(++__IOSUB_BUF_REFCNT(iop, addr) == 1);
+		return addr;
+	} else
 		return UINT64_MAX;
-	else {
-		struct __xpb_bufmem *buf = iop->af_xdp.pool.buf[0][0];
-		assert(buf);
-		__iip_dequeue_obj(iop->af_xdp.pool.buf[0], buf, 0);
-		{
-			uint64_t addr = BUF_SIZE * (((uintptr_t) buf - (uintptr_t) iop->af_xdp.buf) / sizeof(*buf));
-			__IOSUB_BUF_ADDR_ASSERT(iop, addr);
-			assert(++__IOSUB_BUF_REFCNT(iop, addr) == 1);
-			return addr;
-		}
-	}
 }
 
 static void *__iip_ops_pkt_alloc(void *opaque)
@@ -740,7 +718,7 @@ static void *__thread_fn(void *__data)
 				{ /* make a queue for buffer memory */
 					uint16_t i;
 					for (i = 0; i < NUM_BUF; i++)
-						__iip_enqueue_obj(io_opaque[ti->id].af_xdp.pool.buf[0], &io_opaque[ti->id].af_xdp.buf[i], 0);
+						io_opaque[ti->id].af_xdp.free_buf_addr[io_opaque[ti->id].af_xdp.free_buf_cnt++] = BUF_SIZE * i;
 				}
 				printf("rx-desc %u tx-desc %u rx-batch %u tx-batch %u buf-size %u head-room %u\n", NUM_RX_DESC, NUM_TX_DESC, ETH_RX_BATCH, ETH_TX_BATCH, BUF_SIZE, XSK_UMEM__DEFAULT_FRAME_HEADROOM);
 				{ /* instantiate xdp socket */
