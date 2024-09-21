@@ -39,16 +39,16 @@
 #define __IOSUB_MAX_CORE (256)
 
 #ifndef NUM_RX_DESC
-#define NUM_RX_DESC (128)
+#define NUM_RX_DESC (XSK_RING_CONS__DEFAULT_NUM_DESCS)
 #endif
 #ifndef NUM_TX_DESC
-#define NUM_TX_DESC NUM_RX_DESC
+#define NUM_TX_DESC (XSK_RING_PROD__DEFAULT_NUM_DESCS)
 #endif
 #define NUM_BUF (4096 > ((NUM_RX_DESC + NUM_TX_DESC) * 4) ? 4096 : ((NUM_RX_DESC + NUM_TX_DESC) * 4))
 #if (NUM_BUF % 8) /* for used_bm */
 #error "invalid number of bufs"
 #endif
-#define BUF_SIZE (2048)
+#define BUF_SIZE (XSK_UMEM__DEFAULT_FRAME_SIZE)
 #ifndef NUM_NETSTACK_PB
 #define NUM_NETSTACK_PB (8192)
 #endif
@@ -737,7 +737,7 @@ static void *__thread_fn(void *__data)
 								.fill_size = NUM_RX_DESC,
 								.comp_size = NUM_TX_DESC,
 								.frame_size = BUF_SIZE,
-								.frame_headroom = sizeof(struct __bufhead),
+								.frame_headroom = XSK_UMEM__DEFAULT_FRAME_HEADROOM,
 								.flags = 0,
 							};
 							xsk_umem__create(&umem, umem_area, BUF_SIZE * NUM_BUF,
