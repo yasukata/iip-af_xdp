@@ -53,7 +53,7 @@
 #define NUM_NETSTACK_TCP_CONN (512)
 #endif
 #ifndef ETH_RX_BATCH
-#define ETH_RX_BATCH (32)
+#define ETH_RX_BATCH (64)
 #endif
 #ifndef ETH_TX_BATCH
 #define ETH_TX_BATCH ETH_RX_BATCH
@@ -786,7 +786,7 @@ static void *__thread_fn(void *__data)
 								assert(setsockopt(xsk_socket__fd(xsk), SOL_SOCKET, SO_BUSY_POLL, &val, sizeof(val)) != -1);
 							}
 							{
-								uint32_t val = 64;
+								uint32_t val = ETH_RX_BATCH;
 								assert(setsockopt(xsk_socket__fd(xsk), SOL_SOCKET, SO_BUSY_POLL_BUDGET, &val, sizeof(val)) != -1);
 							}
 						}
