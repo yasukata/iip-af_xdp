@@ -835,10 +835,10 @@ static void *__thread_fn(void *__data)
 											struct __xpb *m[ETH_RX_BATCH] = { 0 };
 											uint32_t cnt = 0;
 											{
-												{
-													uint32_t idx;
-													cnt = xsk_ring_cons__peek(&rx_ring, ETH_RX_BATCH, &idx);
-													if (cnt) {
+												uint32_t idx;
+												cnt = xsk_ring_cons__peek(&rx_ring, ETH_RX_BATCH, &idx);
+												if (cnt) {
+													{
 														uint32_t i;
 														for (i = 0; i < cnt; i++) {
 															const struct xdp_desc *d = xsk_ring_cons__rx_desc(&rx_ring, idx + i);
@@ -848,33 +848,33 @@ static void *__thread_fn(void *__data)
 															__IOSUB_BUF_ADDR_ASSERT(&io_opaque[ti->id], d->addr);
 															assert(__IOSUB_BUF_REFCNT(&io_opaque[ti->id], d->addr) == 1);
 														}
-														xsk_ring_cons__release(&rx_ring, cnt);
 													}
-													io_opaque[ti->id].stat[stat_idx].eth.rx_pkt += cnt;
-												}
-												if (cnt) {
-													uint32_t idx;
 													{
-														uint32_t _cnt;
-														_cnt = xsk_ring_prod__reserve(&fill_ring, cnt, &idx);
+														uint32_t __idx;
+														while (cnt != xsk_ring_prod__reserve(&fill_ring, cnt, &__idx)) {
+															if (__IOSUB_BUSY_POLL_SOCK || xsk_ring_prod__needs_wakeup(&fill_ring))
+																assert(recvfrom(xsk_socket__fd(xsk), NULL, 0, MSG_DONTWAIT, NULL, 0) != -1);
+														}
 														{
 															uint32_t i;
-															for (i = 0; i < _cnt; i++) {
+															for (i = 0; i < cnt; i++) {
 																uint64_t addr = __iip_buf_alloc(opaque);
 																assert(addr != UINT64_MAX);
 																__IOSUB_BUF_ADDR_ASSERT(&io_opaque[ti->id], addr);
 																assert(__IOSUB_BUF_REFCNT(&io_opaque[ti->id], addr) == 1);
-																*xsk_ring_prod__fill_addr(&fill_ring, idx + i) = addr;
+																*xsk_ring_prod__fill_addr(&fill_ring, __idx + i) = addr;
 															}
 														}
-														xsk_ring_prod__submit(&fill_ring, _cnt);
-														if (xsk_ring_prod__needs_wakeup(&fill_ring))
-															assert(sendto(xsk_socket__fd(xsk), NULL, 0, MSG_DONTWAIT, NULL, 0) != -1);
 													}
+													xsk_ring_cons__release(&rx_ring, cnt);
+													xsk_ring_prod__submit(&fill_ring, cnt);
+													io_opaque[ti->id].stat[stat_idx].eth.rx_pkt += cnt;
+													next_us = 0;
+												} else {
+													if (__IOSUB_BUSY_POLL_SOCK || xsk_ring_prod__needs_wakeup(&fill_ring))
+														assert(recvfrom(xsk_socket__fd(xsk), NULL, 0, MSG_DONTWAIT, NULL, 0) != -1);
 												}
 											}
-											if (cnt)
-												next_us = 0;
 											{ /* execute network stack */
 												uint32_t _next_us = 1000000U;
 												iip_run(workspace, mac_addr, ip4_addr_be, (void **) m, cnt, &_next_us, opaque);
