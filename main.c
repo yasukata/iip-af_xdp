@@ -467,7 +467,7 @@ static void *iip_ops_pkt_clone(void *pkt, void *opaque)
 		p->addr = ((struct __xpb *) pkt)->addr;
 		p->len = ((struct __xpb *) pkt)->len;
 		p->head = ((struct __xpb *) pkt)->head;
-		assert(__IOSUB_BUF_REFCNT(iop, ((struct __xpb *) pkt)->addr));
+		__IOSUB_BUF_REFCNT(iop, ((struct __xpb *) pkt)->addr)++;
 		return p;
 	}
 }
