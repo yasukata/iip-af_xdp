@@ -45,9 +45,6 @@
 #define NUM_TX_DESC (XSK_RING_PROD__DEFAULT_NUM_DESCS)
 #endif
 #define NUM_BUF (4096 > ((NUM_RX_DESC + NUM_TX_DESC) * 4) ? 4096 : ((NUM_RX_DESC + NUM_TX_DESC) * 4))
-#if (NUM_BUF % 8) /* for used_bm */
-#error "invalid number of bufs"
-#endif
 #define BUF_SIZE (XSK_UMEM__DEFAULT_FRAME_SIZE)
 #ifndef NUM_NETSTACK_PB
 #define NUM_NETSTACK_PB (8192)
@@ -67,7 +64,7 @@
 #endif
 
 #define __IOSUB_BUF_ADDR_ASSERT(__iop, __addr) do { assert((((__addr) & ~(BUF_SIZE - 1)) / BUF_SIZE) < NUM_BUF); } while (0)
-#define __IOSUB_BUF_REFCNT(__iop, __addr) ((__iop)->af_xdp.ref.cnt[((__addr) & ~(BUF_SIZE - 1)) / BUF_SIZE])
+#define __IOSUB_BUF_REFCNT(__iop, __addr) ((__iop)->af_xdp.buf[((__addr) & ~(BUF_SIZE - 1)) / BUF_SIZE].ref)
 
 struct __xpb {
 	uint64_t addr;
@@ -77,6 +74,12 @@ struct __xpb {
 	struct __xpb *prev[2];
 };
 
+struct __xpb_bufmem {
+	uint64_t ref;
+	struct __xpb_bufmem *next[1];
+	struct __xpb_bufmem *prev[1];
+};
+
 struct io_opaque {
 	struct {
 		struct xsk_socket *xsk;
@@ -84,13 +87,11 @@ struct io_opaque {
 		struct xsk_ring_cons *complete_ring;
 		struct xsk_ring_prod *tx_ring;
 		uint16_t eth_sent;
-		uint8_t used_bm[NUM_BUF / 8];
 		struct {
 			struct __xpb *p[1][2];
+			struct __xpb_bufmem *buf[1][2];
 		} pool;
-		struct {
-			uint64_t cnt[NUM_BUF];
-		} ref;
+		struct __xpb_bufmem buf[NUM_BUF];
 	} af_xdp;
 	struct {
 		struct {
@@ -324,35 +325,39 @@ static void __iip_buf_free(uint64_t addr, void *opaque)
 	struct io_opaque *iop = (struct io_opaque *) opaque_array[0];
 	__IOSUB_BUF_ADDR_ASSERT(iop, addr);
 	if (--__IOSUB_BUF_REFCNT(iop, addr) == 0) {
-		uint32_t idx = (addr & ~(BUF_SIZE - 1)) / BUF_SIZE;
-		iop->af_xdp.used_bm[idx >> 3] &= ~(1U << (idx & 7));
+#define __iip_enqueue_obj_top(__queue, __obj, __x) \
+	do { \
+		(__obj)->prev[__x] = (__obj)->next[__x] = NULL; \
+		if (!((__queue)[0])) { \
+			(__queue)[0] = (__queue)[1] = (__obj); \
+		} else { \
+			(__queue)[0]->prev[__x] = (__obj); \
+			(__obj)->next[__x] = (__queue)[0]; \
+			(__queue)[0] = (__obj); \
+		} \
+	} while (0)
+		__iip_enqueue_obj_top(iop->af_xdp.pool.buf[0], &iop->af_xdp.buf[(addr % ~(BUF_SIZE - 1)) / BUF_SIZE], 0);
+#undef __iip_enqueue_obj_top
 	}
-
 }
 
 static uint64_t __iip_buf_alloc(void *opaque)
 {
 	void **opaque_array = (void **) opaque;
 	struct io_opaque *iop = (struct io_opaque *) opaque_array[0];
-	{
-		uint32_t i;
-		for (i = 0; i < (NUM_BUF / 8); i++) {
-			if (iop->af_xdp.used_bm[i] != 0xff) {
-				uint8_t j;
-				for (j = 0; j < 8; j++) {
-					if (!i && !j)
-						continue;
-					if (!(iop->af_xdp.used_bm[i] & (1U << j))) {
-						iop->af_xdp.used_bm[i] |= (1U << j);
-						__IOSUB_BUF_ADDR_ASSERT(iop, BUF_SIZE * ((i << 3) + j));
-						assert(++__IOSUB_BUF_REFCNT(iop, BUF_SIZE * ((i << 3) + j)) == 1);
-						return BUF_SIZE * ((i << 3) + j);
-					}
-				}
-			}
+	if (!iop->af_xdp.pool.buf[0][0])
+		return UINT64_MAX;
+	else {
+		struct __xpb_bufmem *buf = iop->af_xdp.pool.buf[0][0];
+		assert(buf);
+		__iip_dequeue_obj(iop->af_xdp.pool.buf[0], buf, 0);
+		{
+			uint64_t addr = BUF_SIZE * (((uintptr_t) buf - (uintptr_t) iop->af_xdp.buf) / sizeof(*buf));
+			__IOSUB_BUF_ADDR_ASSERT(iop, addr);
+			assert(++__IOSUB_BUF_REFCNT(iop, addr) == 1);
+			return addr;
 		}
 	}
-	return UINT64_MAX;
 }
 
 static void *__iip_ops_pkt_alloc(void *opaque)
@@ -727,6 +732,11 @@ static void *__thread_fn(void *__data)
 					uint16_t i;
 					for (i = 0; i < NUM_NETSTACK_PB; i++)
 						__iip_enqueue_obj(io_opaque[ti->id].af_xdp.pool.p[0], (struct __xpb *) &_premem[2][i * sizeof(struct __xpb)], 0);
+				}
+				{ /* make a queue for buffer memory */
+					uint16_t i;
+					for (i = 0; i < NUM_BUF; i++)
+						__iip_enqueue_obj(io_opaque[ti->id].af_xdp.pool.buf[0], &io_opaque[ti->id].af_xdp.buf[i], 0);
 				}
 				{ /* instantiate xdp socket */
 					struct xsk_socket *xsk;
