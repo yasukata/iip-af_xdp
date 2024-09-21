@@ -66,9 +66,8 @@
 #error "too large max chain and batch"
 #endif
 
-struct __bufhead {
-	uint64_t ref;
-};
+#define __IOSUB_BUF_ADDR_ASSERT(__iop, __addr) do { assert((((__addr) & ~(BUF_SIZE - 1)) / BUF_SIZE) < NUM_BUF); } while (0)
+#define __IOSUB_BUF_REFCNT(__iop, __addr) ((__iop)->af_xdp.ref.cnt[((__addr) & ~(BUF_SIZE - 1)) / BUF_SIZE])
 
 struct __xpb {
 	uint64_t addr;
@@ -89,6 +88,9 @@ struct io_opaque {
 		struct {
 			struct __xpb *p[1][2];
 		} pool;
+		struct {
+			uint64_t cnt[NUM_BUF];
+		} ref;
 	} af_xdp;
 	struct {
 		struct {
@@ -320,10 +322,12 @@ static void __iip_buf_free(uint64_t addr, void *opaque)
 {
 	void **opaque_array = (void **) opaque;
 	struct io_opaque *iop = (struct io_opaque *) opaque_array[0];
-	if (--((struct __bufhead *) xsk_umem__get_data(iop->af_xdp.umem_area, addr & ~(BUF_SIZE - 1)))->ref == 0) {
+	__IOSUB_BUF_ADDR_ASSERT(iop, addr);
+	if (--__IOSUB_BUF_REFCNT(iop, addr) == 0) {
 		uint32_t idx = (addr & ~(BUF_SIZE - 1)) / BUF_SIZE;
 		iop->af_xdp.used_bm[idx >> 3] &= ~(1U << (idx & 7));
 	}
+
 }
 
 static uint64_t __iip_buf_alloc(void *opaque)
@@ -340,9 +344,9 @@ static uint64_t __iip_buf_alloc(void *opaque)
 						continue;
 					if (!(iop->af_xdp.used_bm[i] & (1U << j))) {
 						iop->af_xdp.used_bm[i] |= (1U << j);
-						assert(!((struct __bufhead *) xsk_umem__get_data(iop->af_xdp.umem_area, BUF_SIZE * ((i << 3) + j)))->ref);
-						((struct __bufhead *) xsk_umem__get_data(iop->af_xdp.umem_area, BUF_SIZE * ((i << 3) + j)))->ref++;
-						return BUF_SIZE * ((i << 3) + j) + sizeof(struct __bufhead);
+						__IOSUB_BUF_ADDR_ASSERT(iop, BUF_SIZE * ((i << 3) + j));
+						assert(++__IOSUB_BUF_REFCNT(iop, BUF_SIZE * ((i << 3) + j)) == 1);
+						return BUF_SIZE * ((i << 3) + j);
 					}
 				}
 			}
@@ -447,14 +451,14 @@ static void *iip_ops_pkt_clone(void *pkt, void *opaque)
 {
 	void **opaque_array = (void **) opaque;
 	struct io_opaque *iop = (struct io_opaque *) opaque_array[0];
-	assert(((struct __xpb *) pkt)->addr & ~(BUF_SIZE - 1));
-	assert(((struct __bufhead *) xsk_umem__get_data(iop->af_xdp.umem_area, ((struct __xpb *) pkt)->addr & ~(BUF_SIZE - 1)))->ref);
+	__IOSUB_BUF_ADDR_ASSERT(iop, ((struct __xpb *) pkt)->addr);
+	assert(__IOSUB_BUF_REFCNT(iop, ((struct __xpb *) pkt)->addr));
 	{
 		struct __xpb *p = __iip_ops_pkt_alloc(opaque);
 		p->addr = ((struct __xpb *) pkt)->addr;
 		p->len = ((struct __xpb *) pkt)->len;
 		p->head = ((struct __xpb *) pkt)->head;
-		((struct __bufhead *) xsk_umem__get_data(iop->af_xdp.umem_area, ((struct __xpb *) pkt)->addr & ~(BUF_SIZE - 1)))->ref++;
+		assert(__IOSUB_BUF_REFCNT(iop, ((struct __xpb *) pkt)->addr));
 		return p;
 	}
 }
@@ -824,7 +828,8 @@ static void *__thread_fn(void *__data)
 															assert((m[i] = __iip_ops_pkt_alloc(opaque)) != NULL);
 															m[i]->addr = d->addr;
 															m[i]->len = d->len;
-															assert(((struct __bufhead *) xsk_umem__get_data(umem_area, m[i]->addr & ~(BUF_SIZE - 1)))->ref == 1);
+															__IOSUB_BUF_ADDR_ASSERT(&io_opaque[ti->id], d->addr);
+															assert(__IOSUB_BUF_REFCNT(&io_opaque[ti->id], d->addr) == 1);
 														}
 														xsk_ring_cons__release(&rx_ring, cnt);
 													}
@@ -838,9 +843,11 @@ static void *__thread_fn(void *__data)
 														{
 															uint32_t i;
 															for (i = 0; i < _cnt; i++) {
-																*xsk_ring_prod__fill_addr(&fill_ring, idx + i) = __iip_buf_alloc(opaque);
-																assert(*xsk_ring_prod__fill_addr(&fill_ring, idx + i) != UINT64_MAX);
-																assert(((struct __bufhead *) xsk_umem__get_data(umem_area, *xsk_ring_prod__fill_addr(&fill_ring, idx + i) & ~(BUF_SIZE - 1)))->ref == 1);
+																uint64_t addr = __iip_buf_alloc(opaque);
+																assert(addr != UINT64_MAX);
+																__IOSUB_BUF_ADDR_ASSERT(&io_opaque[ti->id], addr);
+																assert(__IOSUB_BUF_REFCNT(&io_opaque[ti->id], addr) == 1);
+																*xsk_ring_prod__fill_addr(&fill_ring, idx + i) = addr;
 															}
 														}
 														xsk_ring_prod__submit(&fill_ring, _cnt);
