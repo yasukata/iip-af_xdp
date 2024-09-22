@@ -87,7 +87,9 @@ struct io_opaque {
 		struct xsk_ring_prod *tx_ring;
 		uint16_t eth_sent;
 		struct {
-			struct __xpb *p[1][2];
+			uint32_t free_cnt;
+			struct __xpb *free_p[NUM_NETSTACK_PB];
+			struct __xpb p[NUM_NETSTACK_PB];
 			struct __xpb_bufmem *buf[1][2];
 		} pool;
 		uint16_t buf_ref[NUM_BUF];
@@ -346,10 +348,10 @@ static void *__iip_ops_pkt_alloc(void *opaque)
 {
 	void **opaque_array = (void **) opaque;
 	struct io_opaque *iop = (struct io_opaque *) opaque_array[0];
+	assert(iop->af_xdp.pool.free_cnt);
 	{
-		struct __xpb *p = iop->af_xdp.pool.p[0][0];
+		struct __xpb *p = iop->af_xdp.pool.free_p[--iop->af_xdp.pool.free_cnt];
 		assert(p);
-		__iip_dequeue_obj(iop->af_xdp.pool.p[0], p, 0);
 		return (void *) p;
 	}
 }
@@ -366,20 +368,8 @@ static void __iip_pkt_free(void *pkt, void *opaque)
 {
 	void **opaque_array = (void **) opaque;
 	struct io_opaque *iop = (struct io_opaque *) opaque_array[0];
-	memset(pkt, 0, sizeof(struct __xpb));
-#define __iip_enqueue_obj_top(__queue, __obj, __x) \
-	do { \
-		(__obj)->prev[__x] = (__obj)->next[__x] = NULL; \
-		if (!((__queue)[0])) { \
-			(__queue)[0] = (__queue)[1] = (__obj); \
-		} else { \
-			(__queue)[0]->prev[__x] = (__obj); \
-			(__obj)->next[__x] = (__queue)[0]; \
-			(__queue)[0] = (__obj); \
-		} \
-	} while (0)
-	__iip_enqueue_obj_top(iop->af_xdp.pool.p[0], (struct __xpb *) pkt, 0);
-#undef __iip_enqueue_obj_top
+	assert(iop->af_xdp.pool.free_cnt < NUM_NETSTACK_PB);
+	iop->af_xdp.pool.free_p[iop->af_xdp.pool.free_cnt++] = pkt;
 }
 
 static void iip_ops_pkt_free(void *pkt, void *opaque)
@@ -695,7 +685,7 @@ static void *__thread_fn(void *__data)
 		void *workspace = numa_alloc_local(iip_workspace_size());
 		assert(workspace);
 		{
-			uint8_t *_premem[3];
+			uint8_t *_premem[2];
 			{
 				assert((_premem[0] = (uint8_t *) numa_alloc_local(iip_pb_size() * NUM_NETSTACK_PB)) != NULL);
 				{ /* associate memory for packet representation structure */
@@ -709,11 +699,10 @@ static void *__thread_fn(void *__data)
 					for (i = 0; i < NUM_NETSTACK_TCP_CONN; i++)
 						iip_add_tcp_conn(workspace, &_premem[1][i * iip_tcp_conn_size()]);
 				}
-				assert((_premem[2] = numa_alloc_local(sizeof(struct __xpb) * NUM_NETSTACK_PB)) != NULL);
 				{ /* associate memory for tcp connection */
 					uint16_t i;
 					for (i = 0; i < NUM_NETSTACK_PB; i++)
-						__iip_enqueue_obj(io_opaque[ti->id].af_xdp.pool.p[0], (struct __xpb *) &_premem[2][i * sizeof(struct __xpb)], 0);
+						io_opaque[ti->id].af_xdp.pool.free_p[io_opaque[ti->id].af_xdp.pool.free_cnt++] = &io_opaque[ti->id].af_xdp.pool.p[i];
 				}
 				{ /* make a queue for buffer memory */
 					uint16_t i;
@@ -907,7 +896,6 @@ static void *__thread_fn(void *__data)
 					}
 				}
 			}
-			numa_free(_premem[2], sizeof(struct __xpb) * NUM_NETSTACK_PB);
 			numa_free(_premem[1], iip_tcp_conn_size() * NUM_NETSTACK_TCP_CONN);
 			numa_free(_premem[0], iip_pb_size() * NUM_NETSTACK_PB);
 		}
