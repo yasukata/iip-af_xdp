@@ -494,12 +494,17 @@ static void iip_ops_l2_flush(void *opaque)
 				iop->af_xdp.eth_sent += cnt;
 				iop->stat[stat_idx].eth.tx_pkt += cnt;
 			}
+			{
+				uint32_t i;
+				for (i = 0; i < cnt; i++)
+					__iip_pkt_free(iop->eth.tx.m[i], opaque);
+			}
+			{
+				uint32_t i;
+				for (i = cnt; i < iop->eth.tx.cnt; i++)
+					iip_ops_pkt_free(iop->eth.tx.m[i], opaque);
+			}
 		}
-	}
-	{
-		uint32_t i;
-		for (i = 0; i < iop->eth.tx.cnt; i++)
-			__iip_pkt_free(iop->eth.tx.m[i], opaque);
 	}
 	iop->eth.tx.cnt = iop->eth.tx.num_pkt = 0;
 }
