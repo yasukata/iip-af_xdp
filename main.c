@@ -679,7 +679,7 @@ static void *__thread_fn(void *__data)
 	{
 		cpu_set_t cs;
 		CPU_ZERO(&cs);
-		CPU_SET(ti->id, &cs);
+		CPU_SET(__iosub_core_list[ti->id], &cs);
 		assert(pthread_setaffinity_np(pthread_self(), sizeof(cs), &cs) == 0);
 	}
 
