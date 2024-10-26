@@ -956,7 +956,7 @@ static int __iosub_main(int argc, char *const *argv)
 								assert(i != strlen(optarg) - 1 && i != strlen(optarg));
 								{
 									uint16_t from = atoi(&m[0]), to = atoi(&m[i + 1]);
-									assert(from < to);
+									assert(from <= to);
 									{
 										uint16_t j, k;
 										for (j = 0, k = from; k <= to; j++, k++)
