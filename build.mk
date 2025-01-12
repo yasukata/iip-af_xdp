@@ -7,4 +7,6 @@ LDFLAGS += -lbpf
 else ifeq ($(shell echo '#include <xdp/xsk.h>' | cpp -H -fsyntax-only 2>&1 | head -n 1 | grep 'No such file' | wc -l), 0)
 CFLAGS += -DXSK_HEADER_LIBXDP
 LDFLAGS += -lxdp
+else
+$(error xsk.h is not found, maybe libbpf or libxdp is not installed)
 endif
