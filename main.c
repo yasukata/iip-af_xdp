@@ -16,6 +16,7 @@
  *
  */
 
+#include <errno.h>
 #include <sched.h>
 
 #include <sys/ioctl.h>
@@ -493,8 +494,19 @@ static void iip_ops_l2_flush(void *opaque)
 #endif
 				}
 				xsk_ring_prod__submit(iop->af_xdp.tx_ring, cnt);
-				if (xsk_ring_prod__needs_wakeup(iop->af_xdp.tx_ring))
-					assert(sendto(xsk_socket__fd(iop->af_xdp.xsk), NULL, 0, MSG_DONTWAIT, NULL, 0) != -1);
+				if (xsk_ring_prod__needs_wakeup(iop->af_xdp.tx_ring)) {
+					while (1) {
+						ssize_t err = sendto(xsk_socket__fd(iop->af_xdp.xsk), NULL, 0, MSG_DONTWAIT, NULL, 0);
+						if (err != -1)
+							break;
+						else if (errno == EAGAIN)
+							sched_yield();
+						else {
+							perror("sendto");
+							exit(1);
+						}
+					}
+				}
 				iop->af_xdp.eth_sent += cnt;
 				iop->stat[stat_idx].eth.tx_pkt += cnt;
 			}
@@ -802,8 +814,19 @@ static void *__thread_fn(void *__data)
 									}
 								}
 								xsk_ring_prod__submit(&fill_ring, _cnt);
-								if (xsk_ring_prod__needs_wakeup(&fill_ring))
-									assert(sendto(xsk_socket__fd(xsk), NULL, 0, MSG_DONTWAIT, NULL, 0) != -1);
+								if (xsk_ring_prod__needs_wakeup(&fill_ring)) {
+									while (1) {
+										ssize_t err = sendto(xsk_socket__fd(xsk), NULL, 0, MSG_DONTWAIT, NULL, 0);
+										if (err != -1)
+											break;
+										else if (errno == EAGAIN)
+											sched_yield();
+										else {
+											perror("sendto");
+											exit(1);
+										}
+									}
+								}
 							}
 						}
 
