@@ -750,7 +750,18 @@ static void *__thread_fn(void *__data)
 								.xdp_flags = XDP_FLAGS_UPDATE_IF_NOEXIST | XDP_FLAGS_DRV_MODE,
 								.bind_flags = XDP_USE_NEED_WAKEUP | XDP_ZEROCOPY /* | XDP_USE_SG */,
 							};
-							assert(!xsk_socket__create(&xsk, __iosub_ifname, ti->id, umem, &rx_ring, &tx_ring, &cfg));
+							if (xsk_socket__create(&xsk, __iosub_ifname, ti->id, umem, &rx_ring, &tx_ring, &cfg)) { /* try fallback if failed */
+								cfg.bind_flags &= ~(XDP_ZEROCOPY); /* try without XDP_ZEROCOPY */
+								if (xsk_socket__create(&xsk, __iosub_ifname, ti->id, umem, &rx_ring, &tx_ring, &cfg)) {
+									cfg.xdp_flags &= ~(XDP_FLAGS_DRV_MODE); /* try without XDP_FLAGS_DRV_MODE */
+									if (xsk_socket__create(&xsk, __iosub_ifname, ti->id, umem, &rx_ring, &tx_ring, &cfg)) {
+										perror("xsk_socket__create");
+										exit(1);
+									} else
+										printf("xsk_socket__create: disabled XDP_ZEROCOPY and XDP_FLAGS_DRV_MODE\n");
+								} else
+									printf("xsk_socket__create: disabled XDP_ZEROCOPY\n");
+							}
 						}
 						if (__IOSUB_BUSY_POLL_SOCK) {
 							{
