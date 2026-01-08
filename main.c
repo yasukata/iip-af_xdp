@@ -145,10 +145,12 @@ static uint16_t helper_ip4_get_connection_affinity(uint16_t protocol, uint32_t l
 				{
 					size_t i;
 					for (i = 0; i < sizeof(tbl_buf) - 1; i++) {
-						if ((tbl_buf[i] = fgetc(fp)) == EOF) {
+						int c = fgetc(fp);
+						if (c == EOF) {
 							tbl_buf[i] = '\0';
 							break;
-						}
+						} else
+							tbl_buf[i] = c;
 					}
 					assert(i < sizeof(tbl_buf));
 				}
@@ -182,10 +184,12 @@ static uint16_t helper_ip4_get_connection_affinity(uint16_t protocol, uint32_t l
 				{
 					size_t i;
 					for (i = 0; i < sizeof(key_buf) - 1; i++) {
-						if ((key_buf[i] = fgetc(fp)) == EOF) {
+						int c = fgetc(fp);
+						if (c == EOF) {
 							key_buf[i] = '\0';
 							break;
-						}
+						} else
+							key_buf[i] = c;
 					}
 					assert(i < sizeof(key_buf));
 				}
