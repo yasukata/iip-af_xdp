@@ -114,19 +114,24 @@ struct io_opaque {
 	} stat[2];
 };
 
+#ifndef __cplusplus
 static _Atomic uint8_t stat_idx = 0;
+#else
+#include <atomic>
+static std::atomic<uint8_t> stat_idx = 0;
+#endif
 
-static uint8_t mac_addr[6] = { 0 };
+static uint8_t mac_addr[6];
 static uint32_t ip4_addr_be = 0;
-static struct io_opaque io_opaque[__IOSUB_MAX_CORE] = { 0 };
+static struct io_opaque io_opaque[__IOSUB_MAX_CORE];
 
 static const char *__iosub_ifname = NULL;
 static uint16_t __iosub_num_cores = 0;
 static uint16_t __iosub_core_list[__IOSUB_MAX_CORE];
 
-static uint16_t __iosub_rss_tbl_cached[512] = { 0 };
+static uint16_t __iosub_rss_tbl_cached[512];
 static uint16_t __iosub_rss_tbl_size_cached = 0;
-static uint8_t __iosub_rss_key_cached[256] = { 0 };
+static uint8_t __iosub_rss_key_cached[256];
 static uint16_t __iosub_rss_key_size_cached = 0;
 
 static int32_t __iosub_max_poll_wait_ms = 1000U; /* 1 sec */
@@ -134,7 +139,8 @@ static int32_t __iosub_max_poll_wait_ms = 1000U; /* 1 sec */
 static uint16_t helper_ip4_get_connection_affinity(uint16_t protocol, uint32_t local_ip4_be, uint16_t local_port_be, uint32_t peer_ip4_be, uint16_t peer_port_be, void *opaque)
 {
 	if (!__iosub_rss_tbl_size_cached) {
-		char tbl_buf[1024] = { 0 };
+		char tbl_buf[1024];
+		memset(tbl_buf, 0, sizeof(tbl_buf));
 		{
 			char cmdbuf[512];
 			assert((size_t) snprintf(cmdbuf, sizeof(cmdbuf),
@@ -173,7 +179,8 @@ static uint16_t helper_ip4_get_connection_affinity(uint16_t protocol, uint32_t l
 		}
 	}
 	if (!__iosub_rss_key_size_cached) {
-		char key_buf[1024] = { 0 };
+		char key_buf[1024];
+		memset(key_buf, 0, sizeof(key_buf));
 		{
 			char cmdbuf[512];
 			assert((size_t) snprintf(cmdbuf, sizeof(cmdbuf),
@@ -219,11 +226,10 @@ static uint16_t helper_ip4_get_connection_affinity(uint16_t protocol, uint32_t l
 		 * and this symmetric hash mode gives a different result
 		 * from the one that we have using this implementaiton.
 		 */
-		uint32_t _t[3] = {
-			peer_ip4_be,
-			local_ip4_be,
-			(((uint32_t) peer_port_be) << 0) | (((uint32_t) local_port_be) << 16),
-		};
+		uint32_t _t[3];
+		_t[0] = peer_ip4_be;
+		_t[1] = local_ip4_be;
+		_t[2] = (((uint32_t) peer_port_be) << 0) | (((uint32_t) local_port_be) << 16);
 		{
 			uint32_t v = 0;
 			{
@@ -363,7 +369,7 @@ static void *__iip_ops_pkt_alloc(void *opaque)
 
 static void *iip_ops_pkt_alloc(void *opaque)
 {
-	struct __xpb *p = __iip_ops_pkt_alloc(opaque);
+	struct __xpb *p = (struct __xpb *) __iip_ops_pkt_alloc(opaque);
 	p->addr = __iip_buf_alloc(opaque);
 	assert(p->addr != UINT64_MAX);
 	return p;
@@ -374,7 +380,7 @@ static void __iip_pkt_free(void *pkt, void *opaque)
 	void **opaque_array = (void **) opaque;
 	struct io_opaque *iop = (struct io_opaque *) opaque_array[0];
 	assert(iop->af_xdp.pool.free_cnt < NUM_NETSTACK_PB);
-	iop->af_xdp.pool.free_p[iop->af_xdp.pool.free_cnt++] = pkt;
+	iop->af_xdp.pool.free_p[iop->af_xdp.pool.free_cnt++] = (struct __xpb *) pkt;
 }
 
 static void iip_ops_pkt_free(void *pkt, void *opaque)
@@ -436,7 +442,7 @@ static void *iip_ops_pkt_clone(void *pkt, void *opaque)
 	__IOSUB_BUF_ADDR_ASSERT(iop, ((struct __xpb *) pkt)->addr);
 	assert(__IOSUB_BUF_REFCNT(iop, ((struct __xpb *) pkt)->addr));
 	{
-		struct __xpb *p = __iip_ops_pkt_alloc(opaque);
+		struct __xpb *p = (struct __xpb *) __iip_ops_pkt_alloc(opaque);
 		p->addr = ((struct __xpb *) pkt)->addr;
 		p->len = ((struct __xpb *) pkt)->len;
 		p->head = ((struct __xpb *) pkt)->head;
@@ -450,7 +456,7 @@ static void iip_ops_pkt_scatter_gather_chain_append(void *pkt_head, void *pkt_ta
 	struct __xpb *p = (struct __xpb *) pkt_head;
 	while (p->next[1])
 		p = p->next[1];
-	p->next[1] = pkt_tail;
+	p->next[1] = (struct __xpb *) pkt_tail;
 	((struct __xpb *) pkt_tail)->next[1] = NULL;
 }
 
@@ -680,7 +686,11 @@ static void iip_ops_nic_offload_udp_tx_tso_mark(void *m, void *opaque)
 	}
 }
 
-static volatile uint16_t setup_core_id = 0;
+#ifndef __cplusplus
+static _Atomic uint16_t setup_core_id = 0;
+#else
+static std::atomic<uint16_t> setup_core_id = 0;
+#endif
 
 struct __thread_info {
 	pthread_t th;
@@ -714,7 +724,7 @@ static void *__thread_fn(void *__data)
 					for (i = 0; i < NUM_NETSTACK_PB; i++)
 						iip_add_pb(workspace, &_premem[0][i * iip_pb_size()]);
 				}
-				assert((_premem[1] = numa_alloc_local(iip_tcp_conn_size() * NUM_NETSTACK_TCP_CONN)) != NULL);
+				assert((_premem[1] = (uint8_t *) numa_alloc_local(iip_tcp_conn_size() * NUM_NETSTACK_TCP_CONN)) != NULL);
 				{ /* associate memory for tcp connection */
 					uint16_t i;
 					for (i = 0; i < NUM_NETSTACK_TCP_CONN; i++)
@@ -735,18 +745,20 @@ static void *__thread_fn(void *__data)
 					struct xsk_socket *xsk;
 					void *umem_area;
 					struct xsk_umem *umem;
-					struct xsk_ring_prod fill_ring = { 0 };
-					struct xsk_ring_cons complete_ring = { 0 };
+					struct xsk_ring_prod fill_ring;
+					struct xsk_ring_cons complete_ring;
+					memset(&fill_ring, 0, sizeof(fill_ring));
+					memset(&complete_ring, 0, sizeof(complete_ring));
 					{
 						assert((umem_area = numa_alloc_local(BUF_SIZE * NUM_BUF)) != NULL);
 						{
-							struct xsk_umem_config cfg = {
-								.fill_size = NUM_RX_DESC,
-								.comp_size = NUM_TX_DESC,
-								.frame_size = BUF_SIZE,
-								.frame_headroom = XSK_UMEM__DEFAULT_FRAME_HEADROOM,
-								.flags = 0,
-							};
+							struct xsk_umem_config cfg;
+							memset(&cfg, 0, sizeof(cfg));
+							cfg.fill_size = NUM_RX_DESC;
+							cfg.comp_size = NUM_TX_DESC;
+							cfg.frame_size = BUF_SIZE;
+							cfg.frame_headroom = XSK_UMEM__DEFAULT_FRAME_HEADROOM;
+							cfg.flags = 0;
 							xsk_umem__create(&umem, umem_area, BUF_SIZE * NUM_BUF,
 								&fill_ring, &complete_ring, &cfg);
 						}
@@ -755,13 +767,13 @@ static void *__thread_fn(void *__data)
 						struct xsk_ring_cons rx_ring;
 						struct xsk_ring_prod tx_ring;
 						{
-							struct xsk_socket_config cfg = {
-								.rx_size = NUM_RX_DESC,
-								.tx_size = NUM_TX_DESC,
-								.libbpf_flags = 0,
-								.xdp_flags = XDP_FLAGS_UPDATE_IF_NOEXIST | XDP_FLAGS_DRV_MODE,
-								.bind_flags = XDP_USE_NEED_WAKEUP | XDP_ZEROCOPY /* | XDP_USE_SG */,
-							};
+							struct xsk_socket_config cfg;
+							memset(&cfg, 0, sizeof(cfg));
+							cfg.rx_size = NUM_RX_DESC;
+							cfg.tx_size = NUM_TX_DESC;
+							cfg.libbpf_flags = 0;
+							cfg.xdp_flags = XDP_FLAGS_UPDATE_IF_NOEXIST | XDP_FLAGS_DRV_MODE;
+							cfg.bind_flags = XDP_USE_NEED_WAKEUP | XDP_ZEROCOPY /* | XDP_USE_SG */;
 							if (xsk_socket__create(&xsk, __iosub_ifname, ti->id, umem, &rx_ring, &tx_ring, &cfg)) { /* try fallback if failed */
 								cfg.bind_flags &= ~(XDP_ZEROCOPY); /* try without XDP_ZEROCOPY */
 								if (xsk_socket__create(&xsk, __iosub_ifname, ti->id, umem, &rx_ring, &tx_ring, &cfg)) {
@@ -807,7 +819,10 @@ static void *__thread_fn(void *__data)
 									uint32_t i;
 									for (i = 0; i < _cnt; i++) {
 										{
-											void *opaque[3] = { (void *) &io_opaque[ti->id], ti->app_global_opaque, NULL, };
+											void *opaque[3];
+											opaque[0] = (void *) &io_opaque[ti->id];
+											opaque[1] = ti->app_global_opaque;
+											opaque[2] = NULL;
 											*xsk_ring_prod__fill_addr(&fill_ring, idx + i) = __iip_buf_alloc(opaque);
 										}
 										assert(*xsk_ring_prod__fill_addr(&fill_ring, idx + i) != UINT64_MAX);
@@ -834,7 +849,10 @@ static void *__thread_fn(void *__data)
 							usleep(100000);
 
 						{ /* call app thread init */
-							void *opaque[3] = { (void *) &io_opaque[ti->id], ti->app_global_opaque, NULL, };
+							void *opaque[3];
+							opaque[0] =(void *) &io_opaque[ti->id];
+							opaque[1] = ti->app_global_opaque;
+							opaque[2] = NULL;
 							{
 								opaque[2] = __app_thread_init(workspace, ti->id, opaque);
 								{
@@ -842,7 +860,7 @@ static void *__thread_fn(void *__data)
 									do {
 										uint32_t next_us = __iosub_max_poll_wait_ms * 1000;
 										{
-											struct __xpb *m[ETH_RX_BATCH] = { 0 };
+											struct __xpb *m[ETH_RX_BATCH];
 											uint32_t cnt = 0;
 											{
 												uint32_t idx;
@@ -852,7 +870,7 @@ static void *__thread_fn(void *__data)
 														uint32_t i;
 														for (i = 0; i < cnt; i++) {
 															const struct xdp_desc *d = xsk_ring_cons__rx_desc(&rx_ring, idx + i);
-															assert((m[i] = __iip_ops_pkt_alloc(opaque)) != NULL);
+															assert((m[i] = (struct __xpb *) __iip_ops_pkt_alloc(opaque)) != NULL);
 															m[i]->addr = d->addr;
 															m[i]->len = d->len;
 															__IOSUB_BUF_ADDR_ASSERT(&io_opaque[ti->id], d->addr);
@@ -926,10 +944,10 @@ static void *__thread_fn(void *__data)
 											}
 										}
 										if (next_us) {
-											struct pollfd pollfd = {
-												.fd = xsk_socket__fd(xsk),
-												.events = POLLIN,
-											};
+											struct pollfd pollfd;
+											memset(&pollfd, 0, sizeof(pollfd));
+											pollfd.fd = xsk_socket__fd(xsk),
+											pollfd.events = POLLIN,
 											assert(poll(&pollfd, 1, (next_us / 1000)) != -1);
 										}
 									} while (!__app_should_stop(opaque));
@@ -951,6 +969,10 @@ static void *__thread_fn(void *__data)
 
 static int __iosub_main(int argc, char *const *argv)
 {
+	memset(mac_addr, 0, sizeof(mac_addr));
+	memset(io_opaque, 0, sizeof(io_opaque));
+	memset(__iosub_rss_tbl_cached, 0, sizeof(__iosub_rss_tbl_cached));
+	memset(__iosub_rss_key_cached, 0, sizeof(__iosub_rss_key_cached));
 	{
 		int ch;
 		while ((ch = getopt(argc, argv, "e:i:l:")) != -1) {
@@ -1047,15 +1069,16 @@ static int __iosub_main(int argc, char *const *argv)
 		int fd;
 		assert((fd = socket(AF_INET, SOCK_DGRAM, 0)) != -1);
 		{
-			struct ifreq ifr = { 0 };
+			struct ifreq ifr;
+			memset(&ifr, 0, sizeof(ifr));
 			strncpy(ifr.ifr_name, __iosub_ifname, sizeof(ifr.ifr_name) - 1);
 			assert(!ioctl(fd, SIOCGIFHWADDR, &ifr));
 			memcpy(mac_addr, ifr.ifr_hwaddr.sa_data, sizeof(mac_addr));
 		}
 		{
-			struct ifreq ifr = {
-				.ifr_addr.sa_family = AF_INET,
-			};
+			struct ifreq ifr;
+			memset(&ifr, 0, sizeof(ifr));
+			ifr.ifr_addr.sa_family = AF_INET,
 			strncpy(ifr.ifr_name, __iosub_ifname, sizeof(ifr.ifr_name) - 1);
 			assert(!ioctl(fd, SIOCGIFADDR, &ifr));
 			ip4_addr_be = ((struct sockaddr_in *) &ifr.ifr_addr)->sin_addr.s_addr;
